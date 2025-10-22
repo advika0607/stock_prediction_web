@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - {{ ticker }}{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>
+                <i class="fas fa-chart-line"></i> {{ ticker }} Dashboard
+            </h2>
+        </div>
+        <div class="col-auto">
+            <a href="/predict?ticker={{ ticker }}" class="btn btn-primary">
+                <i class="fas fa-sync-alt"></i> Refresh Data
+            </a>
+        </div>
+    </div>
+
+    <!-- Stock Summary -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-8">
+                    <h4 id="stockName">Loading...</h4>
+                    <p class="text-muted" id="stockInfo">-</p>
+                </div>
+                <div class="col-md-4 text-end">
+                    <h2 id="currentPrice">$0.00</h2>
+                    <p id="priceChange">-</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Market Cap</h6>
+                    <h5 id="marketCap">-</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">Volume</h6>
+                    <h5 id="volume">-</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">52W High</h6>
+                    <h5 id="high52">-</h5>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card text-center">
+                <div class="card-body">
+                    <h6 class="text-muted">52W Low</h6>
+                    <h5 id="low52">-</h5>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">Price History (1 Year)</h5>
+            <canvas id="priceChart" height="80"></canvas>
+        </div>
+    </div>
+</div>
+
+<script>
+const ticker = '{{ ticker }}';
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadDashboardData();
+});
+
+async function loadDashboardData() {
+    try {
+        // Load stock info
+        const infoResponse = await fetch('/api/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ticker: ticker })
+        });
+        
+        const infoData = await infoResponse.json();
+        
+        if (infoData.success) {
+            displayStockInfo(infoData.info);
+        }
+        
+        // Load historical data
+        const histResponse = await fetch(`/api/historical/${ticker}`);
+        const histData = await histResponse.json();
+        
+        if (histData.success) {
+            createPriceChart(histData.data);
+        }
+        
+    } catch (error) {
+        console.error('Error loading dashboard:', error);
+    }
+}
+
+function displayStockInfo(info) {
+    document.getElementById('stockName').textContent = info.name;
+    document.getElementById('stockInfo').textContent = `${info.sector} • ${info.industry}`;
+    document.getElementById('currentPrice').textContent = `$${info.current_price.toFixed(2)}`;
+    
+    const change = info.current_price - info.previous_close;
+    const changePct = (change / info.previous_close) * 100;
+    const changeClass = change >= 0 ? 'text-success' : 'text-danger';
+    const changeIcon = change >= 0 ? '▲' : '▼';
+    
+    document.getElementById('priceChange').innerHTML = `
+        <span class="${changeClass}">
+            ${changeIcon} $${Math.abs(change).toFixed(2)} (${Math.abs(changePct).toFixed(2)}%)
+        </span>
+    `;
+    
+    // Format market cap
+    const marketCap = info.market_cap;
+    let marketCapFormatted;
+    if (marketCap >= 1e12) {
+        marketCapFormatted = `$${(marketCap / 1e12).toFixed(2)}T`;
+    } else if (marketCap >= 1e9) {
+        marketCapFormatted = `$${(marketCap / 1e9).toFixed(2)}B`;
+    } else if (marketCap >= 1e6) {
+        marketCapFormatted = `$${(marketCap / 1e6).toFixed(2)}M`;
+    } else {
+        marketCapFormatted = `$${marketCap.toLocaleString()}`;
+    }
+    
+    document.getElementById('marketCap').textContent = marketCapFormatted;
+    
+    // Format volume
+    const volume = info.volume;
+    let volumeFormatted;
+    if (volume >= 1e9) {
+        volumeFormatted = `${(volume / 1e9).toFixed(2)}B`;
+    } else if (volume >= 1e6) {
+        volumeFormatted = `${(volume / 1e6).toFixed(2)}M`;
+    } else if (volume >= 1e3) {
+        volumeFormatted = `${(volume / 1e3).toFixed(2)}K`;
+    } else {
+        volumeFormatted = volume.toLocaleString();
+    }
+    
+    document.getElementById('volume').textContent = volumeFormatted;
+    document.getElementById('high52').textContent = `$${info['52_week_high'].toFixed(2)}`;
+    document.getElementById('low52').textContent = `$${info['52_week_low'].toFixed(2)}`;
+}
+
+function createPriceChart(data) {
+    const ctx = document.getElementById('priceChart');
+    
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: data.dates,
+            datasets: [{
+                label: 'Close Price',
+                data: data.close,
+                borderColor: '#667eea',
+                backgroundColor: 'rgba(102, 126, 234, 0.1)',
+                tension: 0.4,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    display: true
+                },
+                tooltip: {
+                    mode: 'index',
+                    intersect: false
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: false
+                }
+            }
+        }
+    });
+}
+</script>
+{% endblock %}

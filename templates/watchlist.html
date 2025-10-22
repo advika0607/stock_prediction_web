@@ -1,0 +1,278 @@
+{% extends "base.html" %}
+
+{% block title %}Watchlist - Stock Price Predictor{% endblock %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row mb-4">
+        <div class="col">
+            <h2>
+                <i class="fas fa-star text-warning"></i> My Watchlist
+            </h2>
+            <p class="text-muted">Track your favorite stocks</p>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
+                <i class="fas fa-plus"></i> Add Stock
+            </button>
+        </div>
+    </div>
+
+    <!-- Loading Spinner -->
+    <div id="loadingSpinner" class="text-center">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <!-- Watchlist Grid -->
+    <div id="watchlistGrid" class="row g-4" style="display: none;">
+        <!-- Stock cards will be inserted here -->
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyState" class="text-center py-5" style="display: none;">
+        <i class="fas fa-inbox fa-5x text-muted mb-3"></i>
+        <h4>Your watchlist is empty</h4>
+        <p class="text-muted">Add stocks to start tracking them</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addStockModal">
+            <i class="fas fa-plus"></i> Add Your First Stock
+        </button>
+    </div>
+</div>
+
+<!-- Add Stock Modal -->
+<div class="modal fade" id="addStockModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Add Stock to Watchlist</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="tickerInput" class="form-label">Stock Ticker</label>
+                    <input type="text" 
+                           class="form-control" 
+                           id="tickerInput" 
+                           placeholder="e.g., AAPL, GOOGL, TSLA"
+                           autocomplete="off">
+                </div>
+                <div id="modalAlert" class="alert" style="display: none;"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="addStockBtn">Add to Watchlist</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+.stock-card {
+    background: white;
+    border-radius: 15px;
+    padding: 25px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+    transition: all 0.3s;
+    cursor: pointer;
+    height: 100%;
+}
+
+.stock-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+}
+
+.stock-ticker {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 5px;
+}
+
+.stock-name {
+    font-size: 14px;
+    color: #6c757d;
+    margin-bottom: 15px;
+}
+
+.stock-price {
+    font-size: 28px;
+    font-weight: bold;
+    margin-bottom: 10px;
+}
+
+.stock-change {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.remove-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.stock-card:hover .remove-btn {
+    opacity: 1;
+}
+</style>
+
+<script>
+let watchlistData = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadWatchlist();
+});
+
+document.getElementById('addStockBtn').addEventListener('click', function() {
+    const ticker = document.getElementById('tickerInput').value.trim().toUpperCase();
+    
+    if (!ticker) {
+        showModalAlert('Please enter a ticker', 'warning');
+        return;
+    }
+    
+    addToWatchlist(ticker);
+});
+
+document.getElementById('tickerInput').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        document.getElementById('addStockBtn').click();
+    }
+});
+
+async function loadWatchlist() {
+    document.getElementById('loadingSpinner').style.display = 'block';
+    document.getElementById('watchlistGrid').style.display = 'none';
+    document.getElementById('emptyState').style.display = 'none';
+    
+    try {
+        const response = await fetch('/api/watchlist/get');
+        const data = await response.json();
+        
+        if (data.success) {
+            watchlistData = data.stocks;
+            displayWatchlist(data.stocks);
+        } else {
+            console.error('Error loading watchlist:', data.error);
+        }
+    } catch (error) {
+        console.error('Error:', error);
+    } finally {
+        document.getElementById('loadingSpinner').style.display = 'none';
+    }
+}
+
+function displayWatchlist(stocks) {
+    const grid = document.getElementById('watchlistGrid');
+    grid.innerHTML = '';
+    
+    if (stocks.length === 0) {
+        document.getElementById('emptyState').style.display = 'block';
+        return;
+    }
+    
+    document.getElementById('watchlistGrid').style.display = 'flex';
+    
+    stocks.forEach(stock => {
+        const change = stock.current_price - stock.previous_close;
+        const changePct = (change / stock.previous_close) * 100;
+        const changeClass = change >= 0 ? 'text-success' : 'text-danger';
+        const changeIcon = change >= 0 ? '▲' : '▼';
+        
+        const card = document.createElement('div');
+        card.className = 'col-md-4 col-sm-6';
+        card.innerHTML = `
+            <div class="stock-card position-relative" onclick="goToPredict('${stock.symbol}')">
+                <button class="btn btn-sm btn-danger remove-btn" onclick="event.stopPropagation(); removeFromWatchlist('${stock.symbol}')">
+                    <i class="fas fa-times"></i>
+                </button>
+                <div class="stock-ticker">${stock.symbol}</div>
+                <div class="stock-name">${stock.name}</div>
+                <div class="stock-price">${stock.current_price.toFixed(2)}</div>
+                <div class="stock-change ${changeClass}">
+                    ${changeIcon} ${Math.abs(change).toFixed(2)} (${Math.abs(changePct).toFixed(2)}%)
+                </div>
+                <hr>
+                <div class="d-flex justify-content-between text-muted small">
+                    <span>High: ${stock.day_high.toFixed(2)}</span>
+                    <span>Low: ${stock.day_low.toFixed(2)}</span>
+                </div>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+function goToPredict(ticker) {
+    window.location.href = `/predict?ticker=${ticker}`;
+}
+
+async function addToWatchlist(ticker) {
+    try {
+        const response = await fetch('/api/watchlist/add', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ticker: ticker })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            showModalAlert('Added to watchlist!', 'success');
+            document.getElementById('tickerInput').value = '';
+            setTimeout(() => {
+                bootstrap.Modal.getInstance(document.getElementById('addStockModal')).hide();
+                loadWatchlist();
+            }, 1000);
+        } else {
+            showModalAlert(data.error, 'danger');
+        }
+    } catch (error) {
+        showModalAlert('Error adding to watchlist', 'danger');
+    }
+}
+
+async function removeFromWatchlist(ticker) {
+    if (!confirm(`Remove ${ticker} from watchlist?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/watchlist/remove', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ ticker: ticker })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            loadWatchlist();
+        }
+    } catch (error) {
+        console.error('Error removing from watchlist:', error);
+    }
+}
+
+function showModalAlert(message, type) {
+    const alert = document.getElementById('modalAlert');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+    alert.style.display = 'block';
+    
+    setTimeout(() => {
+        alert.style.display = 'none';
+    }, 3000);
+}
+</script>
+{% endblock %}
