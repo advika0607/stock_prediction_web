@@ -1,4 +1,7 @@
 Stock Prediction Web Application
+
+
+
 Project Overview
 The Stock Prediction Web Application is a comprehensive tool designed to predict stock prices using historical data and machine learning models via a user-friendly web interface. This project integrates Python backend processing for data retrieval, preprocessing, and prediction with a dynamic frontend for real-time stock visualization.
 
